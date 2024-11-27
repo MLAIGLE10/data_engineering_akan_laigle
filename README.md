@@ -1,177 +1,224 @@
-# Sujet de travaux pratiques "Introduction à la data ingénierie"
+# Projet data engineer
 
-Le but de ce projet est de créer un pipeline ETL d'ingestion, de transformation et de stockage de données pour mettre en pratique les connaissances acquises lors du cours d'introduction à la data ingénierie. Ce sujet présenté propose d'utiliser les données d'utilisation des bornes de vélos open-sources et "temps réel" des bornes de vélos dans les grandes villes de France.
+Binome : Hanaa AKAN et Margaux LAIGLE
 
-Le sujet propose une base qui est un pipeline ETL complet qui couvre la récupération, le stockage et la transformation des données open sources de la ville de Paris.
+## Architecture du projet 
 
-Le but du sujet de travaux pratiques est d'ajouter à ce pipeline des données provenant d'autres grandes villes de France. Ces données sont disponibles pour les villes de Nantes, de Toulouse ou encore de Strasbourg. Il faudra aussi enrichir ces données avec les données descriptives des villes de France, via une API de l'État français open-source.
+Nous avons 4 fichiers : 
 
-## Explication du code existant
+- *data_ingestion* : fichier python pour récupérer et stocker les données dans des fichiers localement
 
-Le projet est découpé en 3 parties :
+- *data_consolidation* : fichier python pour consolider les données et faire un premier load dans une base de données type data-warehouse
 
-1. Un fichier python pour récupérer et stocker les données dans des fichiers localement
+- *data_agregation* : fichier python pour agréger les données et créer une modélisation de type dimensionnelle
 
-2. Un fichier python pour consolider les données et faire un premier load dans une base de données type data-warehouse
+- *main* : fichier python qui permet d'exécuter l'ensemble du code 
 
-3. Un fichier python pour agréger les données et créer une modélisation de type dimensionnelle
+Le projet de base permet de récupérer les données de la ville de Paris, ses codes postaux ainsi que ses stations. Notre objectif étant d'étoffer la base de données en récupérant les informations de toutes les communes de France ainsi que les données des station de la ville de Toulouse.
 
-### Ingestion des données
+Pour ce faire, nous avons modifié le code existant en ajoutant de nouvelles fonctions ou en les modifiant pour adapter le code existant à l'ajout de ces données. 
+
+### 1. Ingestion des données
+
+Premièrement, nous nous sommes concentrées sur l'ingestion des données. 
+
+Nous avons, d'une part, récupéré les données des communes de France grâce à la fonction *get_city_data*. 
 
 ```python
-def get_paris_realtime_bicycle_data():
-    url = "https://opendata.paris.fr/api/explore/v2.1/catalog/datasets/velib-disponibilite-en-temps-reel/exports/json"
+def get_city_data():
+    """
+    Récupère les données des villes françaises via une API et les sauvegarde.
+    """
+    # URL de l'API pour les données des communes françaises
+    url = "https://geo.api.gouv.fr/communes"
+    
+    # Effectuer une requête GET pour récupérer les données
     response = requests.request("GET", url)
-    serialize_data(response.text, "paris_realtime_bicycle_data.json")
-
-def serialize_data(raw_json: str, file_name: str):
-    today_date = datetime.now().strftime("%Y-%m-%d")
-    if not os.path.exists(f"data/raw_data/{today_date}"):
-        os.makedirs(f"data/raw_data/{today_date}")
-    with open(f"data/raw_data/{today_date}/{file_name}", "w") as fd:
-        fd.write(raw_json)
+    
+    # Sauvegarder les données en JSON
+    serialize_data(response.text, "city_data.json")
 ```
 
-Ces fonctions python sont assez simples. Elles récupèrent les données sur une API open-source, et les stockent dans un fichier json localement. Ces fonctions sont dans le fichier python `data_ingestion.py`.
+Cette fonction récupère les données des communes de l'api du gouvernement en ligne. Ainsi, on lui donne l'URL, on récupère les données et on les sauvegarde dans un fichier JSON. 
 
-### Consolidation des données
-
-**Duckdb** est une base de données de type data-warehouse que l'on peut utiliser localement, car elle charge les données en "in-memory" ou dans un fichier local. C'est l'équivalent de SQLite, mais pour des bases de données de type data-warehouse. Créer une connexion duckdb permet de "créer" une database et d'interagir avec comme avec un vrai data-warehouse. C'est parfait pour des projets de ce type. Plus d'informations sur le site officiel de duckdb : https://duckdb.org/.
-
-Dans le fichier `data_consolidation.py` on trouve une fonction qui permet de créer les tables dans une base de données **duckdb**. On utilise le fichier `create_consolidate_tables.sql` pour définir les schémas des tables. Vous ne devriez pas avoir à modifier les schémas des tables, mais vous pouvez le faire si vous voyez une optimisation ou si le schéma est contraignant pour vous pour la réalisation de ce TP.
+D'une autre part, nous avons récupéré les données des stations de la ville de Toulouse.
 
 ```python
-def create_consolidate_tables():
-    con = duckdb.connect(database = "data/duckdb/mobility_analysis.duckdb", read_only = False)
-    with open("data/sql_statements/create_consolidate_tables.sql") as fd:
-        statements = fd.read()
-    for statement in statements.split(";"):
-        print(statement)
-        con.execute(statement)
+def get_toulouse_realtime_bicycle_data():
+    """
+    Récupère les données en temps réel des vélos à Toulouse via une API et les sauvegarde.
+    """
+    # URL de l'API pour les données des vélos à Toulouse en temps réel
+    url = "https://data.toulouse-metropole.fr/api/explore/v2.1/catalog/datasets/api-velo-toulouse-temps-reel/exports/json"
+    
+    # Effectuer une requête GET pour récupérer les données
+    response = requests.request("GET", url)
+    
+    # Sauvegarder les données en JSON
+    serialize_data(response.text, "toulouse_realtime_bicycle_data.json")
 ```
 
-Une fois les tables créées, on peut lancer les autres fonctions de consolidation. Elles fonctionnent toutes de la même manière :
+On procède de la même manière que pour les données des communes, en donnant une URL, en récupérant les données et les enregistrant dans un fichier JSON. 
+
+### 2. Consolidation des données
+
+Ensuite, nous sommes passées à la consolidation des données.
+
+Premièrement, nous avons consolidé les données des communes :
 
 ```python
-def consolidate_station_data():
-    con = duckdb.connect(database = "data/duckdb/mobility_analysis.duckdb", read_only = False)
+def consolidate_city_data():
+    """
+    Consolidation des données des villes.
+    """
+    con = duckdb.connect(database="data/duckdb/mobility_analysis.duckdb", read_only=False)
     data = {}
-    # Consolidation logic for Paris Bicycle data
-    with open(f"data/raw_data/{today_date}/paris_realtime_bicycle_data.json") as fd:
+
+    # Charger les données JSON des villes
+    with open(f"data/raw_data/{today_date}/city_data.json") as fd:
         data = json.load(fd)
-    paris_raw_data_df = pd.json_normalize(data)
-    paris_raw_data_df["id"] = paris_raw_data_df["stationcode"].apply(lambda x: f"{PARIS_CITY_CODE}-{x}")
-    paris_raw_data_df["address"] = None
-    paris_raw_data_df["created_date"] = date.today()
-    paris_station_data_df = paris_raw_data_df[[
-        "id",
-        "stationcode",
-        "name",
-        "nom_arrondissement_communes",
-        "code_insee_commune",
-        "address",
-        "coordonnees_geo.lon",
-        "coordonnees_geo.lat",
-        "is_installed",
-        "created_date",
-        "capacity"
-    ]]
-    paris_station_data_df.rename(columns={
-        "stationcode": "code",
-        "name": "name",
-        "coordonnees_geo.lon": "longitude",
-        "coordonnees_geo.lat": "latitude",
-        "is_installed": "status",
-        "nom_arrondissement_communes": "city_name",
-        "code_insee_commune": "city_code"
+
+    # Normaliser les données JSON en DataFrame
+    raw_data_df = pd.json_normalize(data)
+
+    # Sélectionner et renommer les colonnes
+    city_data_df = raw_data_df[["code", "nom", "population"]]
+    city_data_df.rename(columns={
+        "code": "id",
+        "nom": "name",
+        "population": "nb_inhabitants"
     }, inplace=True)
-    con.execute("INSERT OR REPLACE INTO CONSOLIDATE_STATION SELECT * FROM paris_station_data_df;")
+
+    # Éliminer les doublons
+    city_data_df.drop_duplicates(inplace=True)
+
+    # Ajouter une colonne pour la date
+    city_data_df["created_date"] = date.today()
+    print(city_data_df)
+    
+    # Insérer les données dans la table consolidée
+    con.execute("INSERT OR REPLACE INTO CONSOLIDATE_CITY SELECT * FROM city_data_df;")
 ```
 
-Explication de cette fonction :
+Ainsi, nous avons gardé les colonnes qui étaient déja présentes pour la ville de Paris. 
 
-- On commence par créer une connexion à la base duckdb (`read_only = False`) car on va insérer les données dans la base.
-
-- On charge les données depuis les fichiers JSON locaux que l'on a ingérés dans l'étape précédente dans un dataframe Pandas.
-
-- On travaille notre dataframe pour :
-  - renommer les colonnes
-  - supprimer les colonnes inutiles
-  - ajouter des colonnes qui sont attendues par la table `CONSOLIDATE_STATION` dans notre base de données (ici `id`, `address`, `created_date`)
-
-- On insère les données dans la base directement depuis le dataframe (fonctionnalité de duckdb, voir la documentation).
-
-**ATTENTION** : Lors de l'insertion de données dans une table duckdb avec une requête SQL `INSERT OR REPLACE INTO CONSOLIDATE_STATION SELECT * FROM paris_station_data_df;`, il faut s'assurer que :
-
-- votre dataframe contient le même nombre de colonnes que la table dans la base de données
-- les colonnes dans votre dataframe et dans la table doivent être dans le même ordre
-
-**ATTENTION 2** : Les données sont historisées dans les tables de consolidation (d'où la présence des colonnes `created_date` et `id` ou `station_id`). C'est uniquement un choix de conception. Vous pouvez changer ce comportement et supprimer / recharger les données à chaque fois.
-
-Les autres fonctions de consolidation sont similaires.
-
-### Agrégation des données
-
-Dans le fichier `data_agregation.py` on trouve une fonction qui permet de créer les tables dans une base de données **duckdb**. On utilise le fichier `create_agregate_tables.sql` pour définir les schémas des tables. Ces tables représentent une modélisation dimensionnelle simple :
-
-- Deux tables de dimensions : `dim_city` et `dim_station` qui représentent les données descriptives des villes et des stations de vélos en libre-service.
-
-- Une table de faits : `fact_station_statement` qui représente les relevés de disponibilité des vélos dans les stations.
-
-Vous ne devriez pas avoir à modifier les schémas des tables, mais vous pouvez le faire si vous voyez une optimisation ou si le schéma est contraignant pour vous pour la réalisation de ce TP.
+Ensuite, nous avons consolidé les données de Toulouse :
 
 ```python
-def create_agregate_tables():
-    con = duckdb.connect(database = "data/duckdb/mobility_analysis.duckdb", read_only = False)
-    with open("data/sql_statements/create_agregate_tables.sql") as fd:
-        statements = fd.read()
-    for statement in statements.split(";"):
-        print(statement)
-        con.execute(statement)
+def consolidate_station_data_toulouse():
+    """
+    Consolidation des données de stations pour Toulouse.
+    """
+    con = duckdb.connect(database="data/duckdb/mobility_analysis.duckdb", read_only=False)
+    data = {}
+    
+    # Charger les données brutes JSON
+    with open(f"data/raw_data/{today_date}/toulouse_realtime_bicycle_data.json") as fd:
+        data = json.load(fd)
+    
+    # Normaliser les données JSON en DataFrame
+    toulouse_raw_data_df = pd.json_normalize(data)
+    
+    # Extraire les noms de villes uniques
+    city_names = toulouse_raw_data_df["contract_name"].str.lower().unique()
+    
+    # Associer les noms des villes avec les codes INSEE
+    city_to_insee = {}
+    for city in city_names:
+        city_insee = con.execute(
+            "SELECT ID FROM CONSOLIDATE_CITY WHERE LOWER(NAME) = ?;",
+            (city,)
+        ).fetchone()
+        if city_insee:
+            city_to_insee[city] = city_insee[0]
+        else:
+            print(f"Attention : aucun code INSEE trouvé pour la ville {city}.")
+    
+    # Mapper les codes INSEE
+    toulouse_raw_data_df["code_insee_commune"] = toulouse_raw_data_df["contract_name"].str.lower().map(city_to_insee)
+    
+    # Ajouter des colonnes nécessaires
+    toulouse_raw_data_df["id"] = toulouse_raw_data_df["number"].apply(lambda x: f"{TOULOUSE_CITY_CODE}-{x}")
+    toulouse_raw_data_df["created_date"] = date.today()
+    toulouse_raw_data_df["status"] = toulouse_raw_data_df["status"].replace({"OPEN": "OUI", "CLOSE": "NON"})
+    
+    # Sélectionner et renommer les colonnes
+    toulouse_station_data_df = toulouse_raw_data_df[[
+        "id", "number", "name", "contract_name", "code_insee_commune", "address",
+        "position.lon", "position.lat", "status", "created_date", "bike_stands"
+    ]]
+    toulouse_station_data_df.rename(columns={
+        "number": "code",
+        "position.lon": "longitude",
+        "position.lat": "latitude",
+        "contract_name": "city_name",
+        "code_insee_commune": "city_code",
+        "bike_stands": "capacity"
+    }, inplace=True)
+
+    # Insérer les données dans la table consolidée
+    con.execute("INSERT OR REPLACE INTO CONSOLIDATE_STATION SELECT * FROM toulouse_station_data_df;")
 ```
 
-Une fois les tables créées, on peut lancer les autres fonctions d'agrégation. Pour les tables de dimensions, les fonctions sont assez simples. Elles basculent les données des tables de consolidation dans leur table correspondante.
+```python
+def consolidate_station_statement_data_toulouse():
+    """
+    Consolidation des états des stations pour Toulouse.
+    """
+    con = duckdb.connect(database="data/duckdb/mobility_analysis.duckdb", read_only=False)
+    data = {}
 
-La fonction pour la table `fact_station_statement` est plus complexe. Car elle doit faire les jointures avec les autres tables pour que les données soient analysables avec les données descriptives des tables de dimensions. C'est pourquoi elle est remplie via cette requête SQL :
+    # Charger les données brutes JSON
+    with open(f"data/raw_data/{today_date}/toulouse_realtime_bicycle_data.json") as fd:
+        data = json.load(fd)
+        
+    # Normaliser les données JSON en DataFrame
+    toulouse_raw_data_df = pd.json_normalize(data)
+    
+    # Ajouter des colonnes nécessaires
+    toulouse_raw_data_df["station_id"] = toulouse_raw_data_df["number"].apply(lambda x: f"{TOULOUSE_CITY_CODE}-{x}")
+    toulouse_raw_data_df["created_date"] = date.today()
 
-```sql
-INSERT OR REPLACE INTO FACT_STATION_STATEMENT
-SELECT STATION_ID, CITY_CODE, BICYCLE_DOCKS_AVAILABLE, BICYCLE_AVAILABLE, LAST_STATEMENT_DATE, current_date as CREATED_DATE
-FROM CONSOLIDATE_STATION_STATEMENT
-JOIN CONSOLIDATE_STATION ON CONSOLIDATE_STATION.ID = CONSOLIDATE_STATION_STATEMENT.STATION_ID
-LEFT JOIN CONSOLIDATE_CITY as cc ON cc.ID = CONSOLIDATE_STATION.CITY_CODE
-WHERE CONSOLIDATE_STATION_STATEMENT.CREATED_DATE = (SELECT MAX(CREATED_DATE) FROM CONSOLIDATE_STATION_STATEMENT)
-AND CONSOLIDATE_STATION.CREATED_DATE = (SELECT MAX(CREATED_DATE) FROM CONSOLIDATE_STATION);
+    # Sélectionner et renommer les colonnes
+    toulouse_station_statement_data_df = toulouse_raw_data_df[[
+        "station_id", "available_bike_stands", "bike_stands", "last_update", "created_date"
+    ]]
+    toulouse_station_statement_data_df.rename(columns={
+        "available_bike_stands": "bicycle_docks_available",
+        "bike_stands": "bicycle_available",
+        "last_update": "last_statement_date",
+    }, inplace=True)
+
+    # Insérer les données dans la table consolidée
+    con.execute("INSERT OR REPLACE INTO CONSOLIDATE_STATION_STATEMENT SELECT * FROM toulouse_station_statement_data_df;")
 ```
 
-Cette requête SQL réalise une jointure entre la table `CONSOLIDATE_STATION` et la table `CONSOLIDATE_STATION_STATEMENT`. Ensuite, elle fait une jointure avec la table `CONSOLIDATE_CITY`, pour obtenir l'ID de la ville. Enfin, elle remplit la table `FACT_STATION_STATEMENT` avec les données récupérées. On ne récupère que les dernières données des tables de consolidation via les deux `CONSOLIDATE_STATION_STATEMENT.CREATED_DATE = (SELECT MAX(CREATED_DATE) FROM...)` car on a décidé d'historiser les données de nos tables de consolidation.
 
-### Le fichier main.py
+### 3. Agrégation des données
 
-Le fichier `main.py` contient le code principal du processus et exécute séquentiellement les différentes fonctions expliquées plus haut. L'ordre des fonctions de consolidation et d'agrégation n'est pas important.
+Au niveau de l'agrégation des données, nous n'avons pas eu besoin de réaliser quoique ce soit car le code existant était compatible avec nos nouvelles données. 
 
-### En résumé
 
-Voici un aperçu du processus final :
+### 4. Le fichier main.py
 
-![Process final](images/image.png)
+Le fichier `main.py` contient le code principal du processus et exécute séquentiellement les différentes fonctions expliquées plus haut. 
 
-Même si les différents jobs sont présentés parallèlement ici, ils sont en vérité exécutés séquentiellement (voir le fichier `main.py`) car :
+```python
 
-- On ne peut pas faire de l'orchestration facilement dans les environnements locaux de Polytech
+```
 
-- Ce n'est pas possible d'avoir des connexions concurrentes sur un cluster Duckdb en lecture / écriture.
+### En conclusion
 
-Cependant, ce pipeline ETL permet in fine de réaliser des analyses simples des données des stations de vélo en libre service en région parisienne.
+
 
 ### Comment faire fonctionner ce projet?
 
-Pour faire fonctionner ce sujet, c'est assez simple:
+Pour faire fonctionner notre projet :
 
 ```bash 
-git clone https://github.com/kevinl75/polytech-de-101-2024-tp-subject.git
+git clone https://github.com/MLAIGLE10/data_engineering_akan_laigle.git
 
-cd polytech-de-101-2024-tp-subject
+cd data_engineering_akan_laigle
 
 python3 -m venv .venv
 
@@ -182,31 +229,7 @@ pip install -r requirements.txt
 python src/main.py
 ```
 
-## Sujet du TP
-
-Le but de ce TP est d'enrichir ce pipeline avec des données provenant d'autres villes. Les sources de données disponibles sont :
-
-- [Open data Nantes](https://data.nantesmetropole.fr/explore/dataset/244400404_stations-velos-libre-service-nantes-metropole-disponibilites/api/)
-
-- [Open data Toulouse](https://data.toulouse-metropole.fr/explore/dataset/api-velo-toulouse-temps-reel/api/)
-
-**L'ajout d'une seule source de données est suffisant.**
-
-Aussi, il faut remplacer la source de données des tables `CONSOLIDATE_CITY` et `DIM_CITY` par les données provenant de l'API suivante :
-
-- [Open data communes](https://geo.api.gouv.fr/communes)
-
-Une fois l'acquisition de ces nouvelles données réalisée, il faut enrichir le pipeline avec les étapes suivantes :
-
-- ajouter les données de la nouvelle ville dans la consolidation des tables `CONSOLIDATE_STATION` et `CONSOLIDATE_STATION_STATEMENT`
-
-- remplacer la consolidation de `CONSOLIDATE_CITY` et l'adapter pour utiliser les données des communes récupérées plus haut
-
-- adapter si besoin les processus d'agrégation des tables `DIM_STATION` et `FACT_STATION_STATEMENT` et `DIM_CITY`
-
-Au final, le pipeline ETL manager devrait ressembler à ce qui suit :
-
-![Process final](images/image_2.png)
+### Analyse
 
 Au final, vous devriez être capable de réaliser les requêtes SQL suivantes sur votre base de données DuckDB :
 
@@ -230,18 +253,4 @@ FROM DIM_STATION ds JOIN (
 ) AS tmp ON ds.id = tmp.station_id;
 ```
 
-Le sujet devra être rendu sous la forme d'un repository GitHub. Le projet peut être fait seul ou en duo.
 
-### Barème utilisé pour la notation finale :
-
-- Les ingestions fonctionnent correctement et produisent des fichiers json localement (5 points)
-
-- La consolidation actuelle est correctement enrichie avec les nouvelles données (5 points)
-
-- L'agrégation des données est correctement réalisée et les requêtes SQL ci-dessus fonctionnent correctement (5 points)
-
-- Le projet est correctement documenté (installation, exécution, explication de la logique du pipeline) (5 points)
-
-- 2 points bonus pour la clarté générale du code (commentaires, noms de variables, etc.)
-
-- 2 points bonus si d'autres sources de données sont ajoutées pour enrichir l'analyse finale. Attention, le projet doit fonctionner correctement.

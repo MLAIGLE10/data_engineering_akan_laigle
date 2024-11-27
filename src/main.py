@@ -7,11 +7,15 @@ from data_agregation import (
 from data_consolidation import (
     create_consolidate_tables,
     consolidate_city_data,
-    consolidate_station_data,
-    consolidate_station_statement_data
+    consolidate_station_data_paris,
+    consolidate_station_statement_data_paris,
+    consolidate_station_data_toulouse,
+    consolidate_station_statement_data_toulouse
 )
 from data_ingestion import (
-    get_paris_realtime_bicycle_data
+    get_paris_realtime_bicycle_data,
+    get_city_data,
+    get_toulouse_realtime_bicycle_data
 )
 
 def main():
@@ -20,14 +24,18 @@ def main():
 
     print("Data ingestion started.")
     get_paris_realtime_bicycle_data()
+    get_city_data()
+    get_toulouse_realtime_bicycle_data()
     print("Data ingestion ended.")
 
     # data consolidation
     print("Consolidation data started.")
     create_consolidate_tables()
     consolidate_city_data()
-    consolidate_station_data()
-    consolidate_station_statement_data()
+    consolidate_station_data_paris()
+    consolidate_station_data_toulouse()
+    consolidate_station_statement_data_paris()
+    consolidate_station_statement_data_toulouse()
     print("Consolidation data ended.")
 
     # data agregation
