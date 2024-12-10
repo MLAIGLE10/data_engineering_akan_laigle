@@ -2,29 +2,35 @@
 
 Binome : Hanaa AKAN et Margaux LAIGLE
 
-## Architecture du projet 
+## Description du Projet
 
-Nous avons 4 fichiers : 
+Ce projet vise à collecter, consolider et analyser des données liées à la mobilité urbaine, en particulier celles des stations de vélos et des communes. À l'origine, le code ne traitait que les données de la ville de Paris. Nous avons enrichi ce projet en y ajoutant les informations de toutes les communes de France ainsi que des stations de vélos de la ville de Toulouse.
 
-- *data_ingestion* : fichier python pour récupérer et stocker les données dans des fichiers localement
+## Architecture du projet
 
-- *data_consolidation* : fichier python pour consolider les données et faire un premier load dans une base de données type data-warehouse
+Nous avons 4 fichiers :
 
-- *data_agregation* : fichier python pour agréger les données et créer une modélisation de type dimensionnelle
+-   *data_ingestion* : fichier python pour récupérer et stocker les données dans des fichiers localement
 
-- *main* : fichier python qui permet d'exécuter l'ensemble du code 
+-   *data_consolidation* : fichier python pour consolider les données et faire un premier load dans une base de données type data-warehouse
+
+-   *data_agregation* : fichier python pour agréger les données et créer une modélisation de type dimensionnelle
+
+-   *main* : fichier python qui permet d'exécuter l'ensemble du code
 
 Le projet de base permet de récupérer les données de la ville de Paris, ses codes postaux ainsi que ses stations. Notre objectif étant d'étoffer la base de données en récupérant les informations de toutes les communes de France ainsi que les données des station de la ville de Toulouse.
 
-Pour ce faire, nous avons modifié le code existant en ajoutant de nouvelles fonctions ou en les modifiant pour adapter le code existant à l'ajout de ces données. 
+Pour ce faire, nous avons modifié le code existant en ajoutant de nouvelles fonctions ou en les modifiant pour adapter le code existant à l'ajout de ces données.
 
 ### 1. Ingestion des données
 
-Premièrement, nous nous sommes concentrées sur l'ingestion des données. 
+Premièrement, nous nous sommes concentrées sur l'ingestion des données.
 
-Nous avons, d'une part, récupéré les données des communes de France grâce à la fonction *get_city_data*. 
+Nous avons intégré deux nouvelles sources de données : les communes de toute la France et les stations de vélos de Toulouse. Pour cela, nous avons utilisé des APIs ouvertes :
 
-```python
+-   **L'API des communes françaises** pour récupérer les noms, codes INSEE, et populations des villes.
+
+``` python
 def get_city_data():
     """
     Récupère les données des villes françaises via une API et les sauvegarde.
@@ -39,11 +45,11 @@ def get_city_data():
     serialize_data(response.text, "city_data.json")
 ```
 
-Cette fonction récupère les données des communes de l'api du gouvernement en ligne. Ainsi, on lui donne l'URL, on récupère les données et on les sauvegarde dans un fichier JSON. 
+Pour récupérer les données des communes, nous avons utilisé une API publique qui retourne des informations sur toutes les communes françaises. Nous avons sauvegardé ces données sous forme de fichier JSON.
 
-D'une autre part, nous avons récupéré les données des stations de la ville de Toulouse.
+-   **L'API de Toulouse Métropole** pour collecter en temps réel les données sur les stations de vélos, incluant leur capacité et le nombre de vélos disponibles.
 
-```python
+``` python
 def get_toulouse_realtime_bicycle_data():
     """
     Récupère les données en temps réel des vélos à Toulouse via une API et les sauvegarde.
@@ -58,15 +64,18 @@ def get_toulouse_realtime_bicycle_data():
     serialize_data(response.text, "toulouse_realtime_bicycle_data.json")
 ```
 
-On procède de la même manière que pour les données des communes, en donnant une URL, en récupérant les données et les enregistrant dans un fichier JSON. 
+Pour les stations de vélos de Toulouse, une API dédiée nous a permis de collecter en temps réel des informations telles que le nombre de vélos disponibles et la capacité des stations. Là aussi, les données ont été sauvegardées en JSON avant d'être transformées.
+
+Ces nouvelles données ont été récupérées et stockées sous forme de fichiers JSON, prêtes à être consolidées dans notre base de données.
 
 ### 2. Consolidation des données
 
-Ensuite, nous sommes passées à la consolidation des données.
+Ensuite, une fois les données collectées, nous les avons insérées dans des tables consolidées.
 
-Premièrement, nous avons consolidé les données des communes :
+\
+Les données des communes ont été transformées pour conserver uniquement les colonnes pertinentes : code INSEE, nom de la commune et population.
 
-```python
+``` python
 def consolidate_city_data():
     """
     Consolidation des données des villes.
@@ -100,11 +109,11 @@ def consolidate_city_data():
     con.execute("INSERT OR REPLACE INTO CONSOLIDATE_CITY SELECT * FROM city_data_df;")
 ```
 
-Ainsi, nous avons gardé les colonnes qui étaient déja présentes pour la ville de Paris. 
+Pour Toulouse, nous avons enrichi les données des stations avec les codes INSEE correspondants, permettant de relier chaque station à sa commune. Ces données ont ensuite été réparties dans deux tables :
 
-Ensuite, nous avons consolidé les données de Toulouse :
+-   Une table pour les informations statiques des stations (nom, adresse, capacité, etc.)
 
-```python
+``` python
 def consolidate_station_data_toulouse():
     """
     Consolidation des données de stations pour Toulouse.
@@ -160,7 +169,9 @@ def consolidate_station_data_toulouse():
     con.execute("INSERT OR REPLACE INTO CONSOLIDATE_STATION SELECT * FROM toulouse_station_data_df;")
 ```
 
-```python
+-   Une autre pour les données dynamiques (nombre de vélos disponibles en temps réel, statut des stations).
+
+``` python
 def consolidate_station_statement_data_toulouse():
     """
     Consolidation des états des stations pour Toulouse.
@@ -193,29 +204,35 @@ def consolidate_station_statement_data_toulouse():
     con.execute("INSERT OR REPLACE INTO CONSOLIDATE_STATION_STATEMENT SELECT * FROM toulouse_station_statement_data_df;")
 ```
 
+Pour Toulouse, nous avons ajouté des colonnes comme le code INSEE des communes correspondantes et harmonisé les données avec celles de Paris. Les données ont été insérées dans deux nouvelles tables pour séparer les informations statiques des stations et celles mises à jour en temps réel.
 
 ### 3. Agrégation des données
 
-Au niveau de l'agrégation des données, nous n'avons pas eu besoin de réaliser quoique ce soit car le code existant était compatible avec nos nouvelles données. 
-
+Au niveau de l'agrégation des données, nous n'avons pas eu besoin de réaliser quoi que ce soit car le code existant était compatible avec nos nouvelles données.
 
 ### 4. Le fichier main.py
 
-Le fichier `main.py` contient le code principal du processus et exécute séquentiellement les différentes fonctions expliquées plus haut. 
+Le fichier `main.py` contient le code principal du processus et exécute séquentiellement les différentes fonctions expliquées plus haut.
 
-```python
+Il exécute automatiquement les étapes suivantes :
 
-```
+-   **Ingestion des données :** Au début, seules les données de Paris étaient récupérées via l'API en temps réel des vélos. Nous avons ajouté l'ingestion des données des communes françaises et des données en temps réel des stations de vélos de Toulouse. Les fonctions `get_city_data()` et `get_toulouse_realtime_bicycle_data()` ont été ajoutées pour permettre cette collecte supplémentaire.
 
-### En conclusion
+-   **Consolidation des données :** Les données brutes sont transformées en un format cohérent pour être stockées dans la base de données. L'ancienne version du projet ne consolidait que les données pour Paris. Nous avons ajouté des fonctions spécifiques à Toulouse et aux communes de France pour consolider les données des stations et des états des stations. Les nouvelles fonctions `consolidate_station_data_toulouse()` et `consolidate_station_statement_data_toulouse()` ont été ajoutées pour gérer les données de Toulouse.
 
+-   **Agrégation des données :** Cette étape permet de créer des tables agrégées qui facilitent les requêtes analytiques.
 
+### Conclusion
+
+Ce projet permet d'ingérer, consolider et agréger des données sur les stations de vélos en libre-service dans plusieurs villes françaises, notamment Paris et Toulouse. Il suit un processus en trois étapes : l'ingestion des données depuis des APIs, la consolidation pour structurer les informations, et l'agrégation pour fournir des vues analytiques. Le projet a été étendu pour inclure plusieurs villes et permet désormais une gestion centralisée des données, facilitant ainsi l'analyse de la disponibilité des vélos et de la capacité des stations.
+
+Il nous a permis de renforcer nos compétences en gestion de données, en particulier dans l'ingestion, la consolidation et l'agrégation de données issues d'APIs. Nous avons appris à travailler avec des bases de données comme DuckDB, à structurer des données brutes en informations exploitables, et à mettre en place des processus automatisés pour des analyses à grande échelle.
 
 ### Comment faire fonctionner ce projet?
 
 Pour faire fonctionner notre projet :
 
-```bash 
+``` bash
 git clone https://github.com/MLAIGLE10/data_engineering_akan_laigle.git
 
 cd data_engineering_akan_laigle
@@ -231,9 +248,11 @@ python src/main.py
 
 ### Analyse
 
-Au final, vous devriez être capable de réaliser les requêtes SQL suivantes sur votre base de données DuckDB :
+Notre projet peut désormais gérer les données de toutes les communes françaises et des stations de vélos de Toulouse, en plus de celles de Paris. Les données sont prêtes à être analysées via des requêtes SQL, rendant le projet polyvalent et extensible.
 
-```sql
+Ainsi, nous avons exécuté les requêtes que nous devions réussir à faire :
+
+``` sql
 -- Nb d'emplacements disponibles de vélos dans une ville
 SELECT dm.NAME, tmp.SUM_BICYCLE_DOCKS_AVAILABLE
 FROM DIM_CITY dm INNER JOIN (
@@ -243,7 +262,13 @@ FROM DIM_CITY dm INNER JOIN (
     GROUP BY CITY_ID
 ) tmp ON dm.ID = tmp.CITY_ID
 WHERE lower(dm.NAME) in ('paris', 'nantes', 'vincennes', 'toulouse');
+```
 
+Résultat de la requête 1 :
+
+![](req1.png)
+
+``` sql
 -- Nb de vélos disponibles en moyenne dans chaque station
 SELECT ds.name, ds.code, ds.address, tmp.avg_dock_available
 FROM DIM_STATION ds JOIN (
@@ -253,4 +278,6 @@ FROM DIM_STATION ds JOIN (
 ) AS tmp ON ds.id = tmp.station_id;
 ```
 
+Résultat de la requête 2 :
 
+![](req2.png)
